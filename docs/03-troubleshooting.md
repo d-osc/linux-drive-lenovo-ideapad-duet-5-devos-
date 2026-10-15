@@ -5,22 +5,44 @@
 
 ---
 
-## ทัชแพต/คีย์บอร์ด folio หลุดเป็นพักๆ
+## ทัชแพต/คีย์บอร์ด folio หลุดเป็นพักๆ — บันไดความเสถียร 4 ขั้น
 
 **อาการ:** ใช้ได้ปกติ แล้วทัชแพตเงียบไปเฉยๆ (บางรายต้องรีบูตถึงกลับมา)
 เจ้าของ Duet 5i รายอื่น[รายงานอาการเดียวกัน](https://discussion.fedoraproject.org/t/bluetooth-keyboard-with-touchpad-connected-but-not-working-lenovo-ideapad-duet-5i/78551)
 
-**สาเหตุที่พบบ่อย:** USB autosuspend พักอุปกรณ์ แล้วตื่นไม่สำเร็จ
+**สาเหตุหลัก:** เคอร์เนลพักอุปกรณ์ USB (autosuspend) หลังไม่ได้ใช้ ~2 วินาที
+แล้ว folio ตื่นจากโหมดพักไม่สำเร็จ แก้เป็นขั้นๆ ตามลำดับนี้ (ทำขั้นแรกก่อน แล้วค่อยขึ้น):
 
-**แก้:** สคริปต์ `post-install.sh` ติดตั้ง udev rule ไปแล้ว ถ้ายังหลุดอยู่:
+**ขั้น 1 — udev rule (ทำให้โดย post-install.sh แล้ว):** ปิด autosuspend กับอุปกรณ์ USB
+ภายในทั้งหมด + interface ที่ usbhid ถือ ครอบคลุม folio ทันทีโดยไม่ต้องตั้งค่า
 
-1. ดูค่า VID:PID: `lsusb` (ตอนต่อ folio)
-2. กรอกค่าจริงแทน `XXXX:XXXX` ใน `/etc/udev/rules.d/99-duet5i-folio.rules`
-   (แล้วเปิดบรรทัดเจาะจง ปิดบรรทัด generic ถ้าต้องการ)
-3. `sudo udevadm control --reload && sudo udevadm trigger`
+**ขั้น 2 — เจาะจง folio ด้วย VID:PID (แม่นกว่า):**
+```bash
+sudo bash scripts/touchpad-recover.sh --list   # ดู VID:PID ของ folio พร้อมผู้สมัครทั้งหมด
+```
+กรอกค่าจริงแทน `XXXX:XXXX` ใน `/etc/udev/rules.d/99-duet5i-folio.rules` (ชั้นที่ 1 ในไฟล์)
+แล้ว `sudo udevadm control --reload && sudo udevadm trigger`
 
-**ทางแก้ฉุกเฉิน (ไม่ต้องรีบูต):** ถอด folio แล้วประกบใหม่ มักกลับมาทันที
-หรือ `sudo sh -c 'echo on > /sys/bus/usb/devices/X-Y/power/control'` (แทน X-Y ด้วยพอร์ตจริงจาก `lsusb -t`)
+**ขั้น 3 — ปิด autosuspend ทั้งระบบ (มักจบที่นี่):**
+```bash
+sudo bash scripts/post-install.sh --stable-input
+# แล้วรีบูตหนึ่งครั้ง (เพิ่ม usbcore.autosuspend=-1 ให้ และเตรียม
+# /etc/modprobe.d/duet5i-folio.conf พร้อมตัวเลือก mousepoll ไว้ลองถ้าจำเป็น)
+```
+
+**ขั้น 4 — กู้คืนด่วนเมื่อเกิดขึ้นระหว่างใช้งาน (ไม่ต้องรีบูตอีกต่อไป):**
+```bash
+sudo bash scripts/touchpad-recover.sh            # auto: จับคู่ unbind/bind อุปกรณ์ HID ภายใน
+sudo bash scripts/touchpad-recover.sh 1234:5678  # หรือระบุ VID:PID ตรงๆ
+```
+สคริปต์ทำ unbind → bind (เท่าถอด-ประกบ folio ใหม่แบบซอฟต์แวร์) และมี
+วิธีสำรองที่แรงกว่า (re-enumerate ผ่าน authorized) อัตโนมัติ — **ผูกกับปุ่มลัดไว้ได้**
+เช่น Super+T (ดูคำแนะนำ sudo NOPASSWD ในหัวสคริปต์)
+
+**ถ้าทั้ง 4 ขั้นแล้วยังหลุด:** บันทึก log ระหว่างอาการเกิด:
+`sudo dmesg -wH` ทิ้งไว้ แล้วส่งบรรทัดที่โผล่ตอนทัชแพตดับให้ชุมชนดู —
+ถ้า dmesg แสดง error ของ USB controller ซ้ำๆ (เช่น `xhci ... reset`) แปลว่าเป็น
+ที่ระดับคอนโทรลเลอร์ ค่อยพิจารณา quirk เฉพาะรุ่นต่อไป
 
 **ถ้ายังไม่หาย:** บันทึก log ระหว่างอาการเกิด:
 `sudo dmesg -wH` ทิ้งไว้ แล้วส่งบรรทัดที่โผล่ตอนทัชแพตดับให้ชุมชนดู

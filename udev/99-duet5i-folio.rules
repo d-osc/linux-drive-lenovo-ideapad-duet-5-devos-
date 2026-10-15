@@ -1,23 +1,33 @@
-# 99-duet5i-folio.rules — แก้ทัชแพต/คีย์บอร์ด folio หลุดเป็นพักๆ บน IdeaPad Duet 5i
+# 99-duet5i-folio.rules — ทำให้คีย์บอร์ด/ทัชแพต folio ของ IdeaPad Duet 5i เสถียร
 #
-# สาเหตุ: เคอร์เนลพักอุปกรณ์ USB (autosuspend) หลังไม่ได้ใช้งาน ~2 วินาที
-# ทัชแพตของ folio ตื่นจากโหมดนี้ไม่ทัน/ไม่ตื่นบางครั้ง ทำให้ "หลุด" จนต้องรีบูต
-# วิธีแก้: สั่งให้อุปกรณ์นี้ไม่เข้าโหมดพัก (power/control = on)
+# สาเหตุของอาการ "ทัชแพตหลุดเป็นพักๆ จนต้องรีบูต": เคอร์เนลพักอุปกรณ์ USB
+# (autosuspend) หลังไม่ได้ใช้ ~2 วินาที แล้ว folio ตื่นจากโหมดนี้ไม่สำเร็จ
+# วิธีแก้: ห้ามอุปกรณ์ชุดนี้เข้าโหมดพักทั้งระดับ device และ interface
 #
-# === ขั้นตอนกรอกค่าจริง (ทำครั้งเดียว) ===
+# โครงสร้าง 3 ชั้น (ชั้นแรกทำงานเมื่อกรอก VID:PID จริง ชั้นที่เหลือครอบคลุมทันที):
+#   1) เจาะจงอุปกรณ์ folio ด้วย VID:PID (แม่นสุด)
+#   2) อุปกรณ์ USB ภายในทั้งหมด (folio ต่อผ่าน hub ภายในจะถูกระบุว่า removable=="unknown")
+#   3) interface ที่ไดรเวอร์ usbhid ถืออยู่ (กัน runtime PM ระดับ interface)
+#
+# === ขั้นตอนกรอก VID:PID จริง (ทำครั้งเดียว เพื่อเปิดใช้ชั้นที่ 1) ===
 # 1) ต่อคีย์บอร์ด folio กับเครื่อง
 # 2) รัน:  lsusb
-# 3) หาบรรทัดของคีย์บอร์ด/ทัชแพต Lenovo (มักมีคำว่า "Keyboard" หรือ " Lenovo")
-# 4) จดค่า VID:PID ตรงท้ายบรรทัด รูปแบบ 1234:5678
-# 5) แทนค่า XXXX:XXXX สองบรรทัดด้านล่างด้วยค่าจริง
-# 6) รัน:  sudo udevadm control --reload && sudo udevadm trigger
+# 3) หาบรรทัดของคีย์บอร์ด/ทัชแพต Lenovo แล้วจดค่า VID:PID รูปแบบ 1234:5678
+#    (หรือรัน:  sudo bash scripts/touchpad-recover.sh --list  เพื่อดูตัวเลือกพร้อม VID:PID)
+# 4) แทนค่า XXXX:XXXX ด้านล่างด้วยค่าจริง แล้วเอา '#' ข้างหน้าออก
+# 5) รัน:  sudo udevadm control --reload && sudo udevadm trigger
 #
 
-# ปิด autosuspend เฉพาะอุปกรณ์ที่ระบุ (เจาะจงที่สุด — วิธีที่แนะนำ)
+# ---- ชั้น 1: เจาะจง folio ด้วย VID:PID (แนะนำเมื่อรู้ค่าแล้ว) ----
 # SUBSYSTEM=="usb", ATTR{idVendor}=="XXXX", ATTR{idProduct}=="XXXX", TEST=="power/control", ATTR{power/control}="on"
 # SUBSYSTEM=="usb", ATTR{idVendor}=="XXXX", ATTR{idProduct}=="XXXX", TEST=="power/autosuspend_delay_ms", ATTR{power/autosuspend_delay_ms}="-1"
+# SUBSYSTEM=="usb", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="XXXX", DRIVERS=="usbhid", TEST=="power/control", ATTR{power/control}="on"
 
-# ทางเลือก (ใช้เมื่อยังหา VID:PID ไม่เจอ): ปิด autosuspendกับ "อุปกรณ์ USB ภายในเครื่องทั้งหมด"
-# อุปกรณ์ภายใน (รวมขั้ว pogo ของ folio) จะถูกระบุว่า removable=="unknown"
-# ผลข้างเคียง: ใช้พลังงานมากขึ้นเล็กน้อย แลกกับความเสถียร
+# ---- ชั้น 2: อุปกรณ์ USB ภายในทั้งหมด (ใช้ได้ทันที ไม่ต้องกรอกอะไร) ----
+# อุปกรณ์ภายใน (รวมขั้ว pogo → hub → folio) จะถูกระบุว่า removable=="unknown"
+# ผลข้างเคียง: ใช้พลังงานมากขึ้นเล็กน้อยแลกกับความเสถียร
 SUBSYSTEM=="usb", ATTR{removable}=="unknown", TEST=="power/control", ATTR{power/control}="on"
+SUBSYSTEM=="usb", ATTR{removable}=="unknown", TEST=="power/autosuspend_delay_ms", ATTR{power/autosuspend_delay_ms}="-1"
+
+# ---- ชั้น 3: interface ที่ usbhid ถือ (กัน runtime PM ระดับ interface ของคีย์บอร์ด/เมาส์/ทัชแพต USB) ----
+SUBSYSTEM=="usb", DRIVERS=="usbhid", TEST=="power/control", ATTR{power/control}="on"

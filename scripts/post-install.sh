@@ -7,8 +7,13 @@
 #   3. เปิดบริการ iio-sensor-proxy
 #   4. รายงานสถานะแต่ละส่วนว่าติดตั้งสำเร็จหรือไม่
 #
+# ตัวเลือก:
+#   --stable-input   เพิ่มชั้นความเสถียรสูงสุดของอินพุต: ปิด USB autosuspend ทั้งระบบ
+#                    ผ่าน kernel parameter (usbcore.autosuspend=-1) + สร้าง grub config ใหม่
+#                    ใช้เมื่อ udev rule อย่างเดียวยังไม่พอ — ต้องรีบูตหนึ่งครั้งหลังใช้
+#
 # รองรับ: Fedora (dnf) / Ubuntu-Debian (apt) — รันได้ซ้ำ (idempotent)
-#   sudo bash post-install.sh
+#   sudo bash post-install.sh [--stable-input]
 
 set -u
 
@@ -16,6 +21,41 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "ต้องรันด้วย sudo" >&2
     exit 1
 fi
+
+# ---------- ตัวเลือก: ปิด USB autosuspend ทั้งระบบ (--stable-input) ----------
+apply_stable_input() {
+    echo "== ปิด usbcore.autosuspend ทั้งระบบ (ชั้นความเสถียรสูงสุดของอินพุต) =="
+    if grep -qr 'usbcore.autosuspend' /proc/cmdline 2>/dev/null; then
+        echo "เปิดใช้แล้วในพารามิเตอร์เคอร์เนลปัจจุบัน — ไม่ต้องทำซ้ำ"
+        return 0
+    fi
+    if command -v dnf >/dev/null 2>&1; then
+        # Fedora: แก้ /etc/default/grub ตรงๆ แล้ว regenerate
+        if [ -f /etc/default/grub ] && grep -q '^GRUB_CMDLINE_LINUX=' /etc/default/grub; then
+            sed -i 's/^GRUB_CMDLINE_LINUX="\([^"]*\)"/GRUB_CMDLINE_LINUX="\1 usbcore.autosuspend=-1"/' /etc/default/grub
+            grub2-mkconfig -o /boot/grub2/grub.cfg 2>/dev/null \
+                || grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg 2>/dev/null \
+                || echo "!! รัน grub2-mkconfig ไม่สำเร็จ — ดูคู่มือของ distro" >&2
+        else
+            echo "!! ไม่พบ /etc/default/grub ตามรูปแบบที่คาด — แก้ GRUB_CMDLINE_LINUX ด้วยตัวเอง" >&2
+        fi
+    elif command -v apt >/dev/null 2>&1; then
+        # Ubuntu/Debian: ใช้ drop-in ที่ update-grub รวมให้อัตโนมัติ
+        mkdir -p /etc/default/grub.d
+        printf 'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT usbcore.autosuspend=-1"\n' \
+            > /etc/default/grub.d/duet5i-folio.cfg
+        update-grub 2>/dev/null || echo "!! รัน update-grub ไม่สำเร็จ — ดูคู่มือของ distro" >&2
+    else
+        echo "!! ไม่รู้จัก distro นี้ — เพิ่ม usbcore.autosuspend=-1 ใน bootloader ด้วยตัวเอง" >&2
+        return 1
+    fi
+    # ทางเลือกสำหรับกรณีฮาร์ดแวร์ยังหนึ่ย (แก้ปัญหา HID หลุด/กระตุกในอีกรูปแบบ):
+    #  แก้ไฟล์นี้แล้วเอา '#' หน้าบรรทัด options ออก แล้วรีบูต
+    mkdir -p /etc/modprobe.d
+    printf '# ตัวเลือกเสริมความเสถียรอินพุต (เปิดใช้โดยเอา comment ออก):\n# options usbhid mousepoll=8\n' \
+        > /etc/modprobe.d/duet5i-folio.conf
+    echo "เสร็จ — รีบูตหนึ่งครั้งเพื่อให้พารามิเตอร์มีผล"
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UDEV_SRC="${SCRIPT_DIR}/../udev/99-duet5i-folio.rules"
@@ -32,6 +72,10 @@ else
     exit 1
 fi
 echo "== ตรวจพบ distro แบบ: ${PKG} =="
+
+if [ "${1:-}" = "--stable-input" ]; then
+    apply_stable_input
+fi
 
 # ---------- 1. ติดตั้งแพ็กเกจ ----------
 # หมายเหตุ: บางแพ็กเกจอาจชื่อต่างกันตาม distro — ตัวไหนลงไม่ได้จะข้ามและเตือน
