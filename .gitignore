@@ -3,3 +3,6 @@ DevOs/
 duet5i-probe-*/
 duet5i-probe-*.tar.gz
 *.log
+
+# ผลลัพธ์ build ท้องถิ่น (tarball/notes/checksum สร้างตอน release)
+build/
