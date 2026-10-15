@@ -18,7 +18,7 @@
 | Wi-Fi / Bluetooth (Intel AX201/AX211) | ✅ ทำงานทันที | เฟิร์มแวร์อยู่ในแพ็กเกจ `linux-firmware` |
 | เสียง (SOF Alder Lake) | ⚠️ ต้องมีเฟิร์มแวร์ SOF | มีใน Fedora โดยดีฟอลต์ / Ubuntu ต้องลง `sof-firmware` |
 | ลำโพงทุกตัว | ❓ ต้องยืนยัน | ถ้าเสียงออกไม่ครบทุกลำโพง อาจต้องแก้ UCM — ดู docs/03 |
-| กล้องหน้า/หลัง (Intel IPU6 + MIPI) | ⚠️ ยากที่สุด | ต้องการ libcamera + PipeWire stack — **Fedora รองรับดีที่สุด** |
+| กล้องหน้า/หลัง (Intel IPU6 + MIPI) | ⚠️ ยากที่สุด (มีชุดเครื่องมือครบ) | `camera-setup.sh` ลง stack ให้ + `camera-check.sh` วินิจฉัย 7 ชั้น + `--fix` กู้คืน cold boot โดยไม่ต้องรีบูต — **Fedora รองรับดีที่สุด** |
 | เซ็นเซอร์หมุนจอ (accelerometer) | ⚠️ ต้องมี userspace | ลง `iio-sensor-proxy` → GNOME หมุนจออัตโนมัติ |
 | โหมดแท็บเล็ต (ถอดคีย์บอร์ด) | ✅ มักทำงาน | `intel-vbtn` ส่ง event ให้ GNOME เปิดคีย์บอร์ดจอ |
 
@@ -53,7 +53,9 @@
 │   ├── probe-hardware.sh      ← เก็บข้อมูลฮาร์ดแวร์ทั้งเครื่องเป็น tarball
 │   ├── post-install.sh        ← ลงแพ็กเกจ + เปิดบริการ + ใส่ udev rule (--stable-input / --watchdog)
 │   ├── touchpad-recover.sh    ← กู้คืนทัชแพต/คีย์บอร์ด folio ที่หลุด โดยไม่ต้องรีบูต (มี --hard รีเซ็ต xHCI)
-│   └── folio-watchdog.sh      ← เฝ้า folio ตลอดเวลา หายจากบัสก็กู้คืนให้เองอัตโนมัติ
+│   ├── folio-watchdog.sh      ← เฝ้า folio ตลอดเวลา หายจากบัสก็กู้คืนให้เองอัตโนมัติ
+│   ├── camera-setup.sh        ← ติดตั้งชุดส่วนประกอบกล้อง IPU6 ตาม distro (+ตรวจ Secure Boot/MOK)
+│   └── camera-check.sh        ← วินิจฉัยกล้อง 7 ชั้น + --fix กู้คืน cold boot ด้วย rebind PCI
 ├── systemd/
 │   └── duet5i-folio-watchdog.service ← service unit ของ watchdog (ติดตั้งผ่าน --watchdog)
 ├── tests/

@@ -94,26 +94,36 @@ sudo bash scripts/post-install.sh --watchdog
 **ข้อเท็จจริง:** กล้องเครื่องนี้ต่อแบบ MIPI (ไม่ใช่ USB webcam ธรรมดา) ผ่านชิปประมวลผล
 Intel IPU6 — เป็นส่วนที่ Linux รองรับช้าที่สุดและต้องพึ่งเคอร์เนลใหม่ + libcamera
 
-**บน Fedora (แนะนำ):** ต้องการเคอร์เนล ≥ 6.12 ซึ่งมีไดรเวอร์ [ตั้งแต่ Fedora 41](https://www.phoronix.com/news/Fedora-41-Intel-IPU6-Webcam)
+### เครื่องมือของชุดนี้ (ใช้ก่อนอ่านอย่างอื่น)
 
-1. ตรวจว่าโมดูลขึ้น:
-   ```bash
-   lsmod | grep -E 'ipu6|ivsc'
-   media-ctl -p            # ดู pipeline ของกล้อง
-   ```
-2. ทดสอบด้วยแอปที่รองรับ libcamera:
-   ```bash
-   sudo dnf install libcamera-tools
-   qcam
-   ```
-3. กล้อง MIPI บางเครื่อง **ยังไม่ขึ้นตอนบูตเย็น (cold boot)** แต่ขึ้นหลังรีบูตหนึ่งครั้ง —
-   อาการนี้เป็น [bug ที่รู้จักทั่วไป](https://bugs.launchpad.net/bugs/1921345) ของบางเซ็นเซอร์
-4. Firefox/GNOME ต้องเข้าถึงกล้องผ่าน **portal** (xdg-desktop-portal) — ตรวจว่าติดตั้งแล้ว:
-   `sudo dnf install xdg-desktop-portal-gnome`
+```bash
+# 1) ติดตั้งชุดส่วนประกอบให้ครบตาม distro (Fedora ลงจาก repo หลัก,
+#    Ubuntu ลง DKMS+HAL แล้วเตือนเรื่อง Secure Boot/MOK ให้)
+sudo bash scripts/camera-setup.sh
 
-**บน Ubuntu:** ต้องลงชุด intel-ipu6 เพิ่มตาม[คู่มือทางการของ Ubuntu](https://discourse.ubuntu.com/t/intel-mipi-laptop-camera-not-working-24-04/63403)
-(สคริปต์ post-install.sh พยายามลงให้อัตโนมัติ) และระวัง DKMS พังตามเคอร์เนลใหม่ —
-[ตัวอย่างปัญหาบนเคอร์เนล 6.14](https://github.com/intel/ipu6-drivers/issues/369)
+# 2) วินิจฉัยเชิงลึก 7 ชั้น: เคอร์เนล → โมดูล → media devices → เซ็นเซอร์
+#    ใน topology → /dev/video* → libcamera → dmesg (พร้อมวิธีแก้ทุกข้อ ❌)
+sudo bash scripts/camera-check.sh
+
+# 3) ถ้าเช็คแล้วเจอปัญหา — กู้คืนด้วยการ rebind คอนโทรลเลอร์ IPU6/IVSC
+#    (แก้อาการ "cold boot แล้วกล้องไม่ init" โดยไม่ต้องรีบูต)
+sudo bash scripts/camera-check.sh --fix
+```
+
+### อาการที่พบบ่อยและทางออก
+
+- **บูตเย็น (เปิดเครื่องจากดับสนิท) แล้วกล้องไม่ขึ้น แต่รีสตาร์ตแล้วขึ้น** —
+  [bug ที่รู้จัก](https://bugs.launchpad.net/bugs/1921345)ของบางเซ็นเซอร์:
+  รัน `camera-check.sh --fix` ก่อน ถ้าไม่หายค่อยรีสตาร์ต (warm) หนึ่งครั้ง
+- **แอปไหนใช้ได้บ้าง?** ต้องเป็นแอปที่รองรับ libcamera: `qcam` (ทดสอบ),
+  GNOME Snapshot, Firefox ผ่าน portal — แอป V4L2 เก่า (cheese รุ่นเก่า) ไม่เห็นกล้อง MIPI
+- **Ubuntu: กล้องหายหลังอัปเดตเคอร์เนล** — DKMS พังตามเคอร์เนลใหม่
+  ([ตัวอย่างบน 6.14](https://github.com/intel/ipu6-drivers/issues/369)):
+  รัน `camera-setup.sh` ซ้ำเพื่อ build ใหม่ + ตรวจ `dkms status`
+- **Ubuntu + Secure Boot:** โมดูล DKMS โหลดไม่ได้จนกว่าจะลงนาม MOK —
+  `camera-setup.sh` ตรวจและพิมพ์คำสั่งลงนามให้ หรือปิด Secure Boot ใน BIOS
+- **อ่านเพิ่ม:** [คู่มือทางการของ Ubuntu](https://discourse.ubuntu.com/t/intel-mipi-laptop-camera-not-working-24-04/63403),
+  [สถานะ libcamera](https://libcamera.org/faq.html), [ipu6-drivers ของ Intel](https://github.com/intel/ipu6-drivers)
 
 ---
 

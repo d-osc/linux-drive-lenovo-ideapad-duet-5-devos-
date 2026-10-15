@@ -33,9 +33,10 @@ say() { printf '%s\n' "$*"; }
 # ---------- 1) ฐานทั้งหมด ----------
 if [ "$CHECK_ONLY" -eq 0 ]; then
     say "=================================================="
-    say "ขั้นที่ 1/4 — ติดตั้งฐาน (แพ็กเกจ + udev + watchdog)"
+    say "ขั้นที่ 1/4 — ติดตั้งฐาน (แพ็กเกจ + udev + watchdog + กล้อง)"
     say "=================================================="
     bash "$ROOT/scripts/post-install.sh" --watchdog || true
+    bash "$ROOT/scripts/camera-setup.sh" || true
 fi
 
 # ---------- 2) ตรวจจับ folio แล้วกรอกค่าให้อัตโนมัติ ----------
@@ -105,10 +106,10 @@ else
 fi
 
 # กล้อง
-n_video=$(ls /dev/video* 2>/dev/null | wc -l | tr -d ' ')
+n_video=$(ls /dev/video[0-9]* 2>/dev/null | wc -l | tr -d ' ')
 [ "$n_video" -gt 0 ] \
     && report "กล้อง (/dev/video* มี $n_video ตัว — ทดสอบด้วย qcam)" 0 "" \
-    || report "กล้อง (IPU6)" 1 "รีบูต 1 ครั้ง (อาการ cold boot) ถ้ายังไม่มี ดูหัวข้อกล้องใน docs/03"
+    || report "กล้อง (IPU6)" 1 "รีบูต warm 1 ครั้ง แล้วรัน: sudo bash scripts/camera-check.sh --fix — รายละเอียด 7 ชั้นในนั้น"
 
 # แสงจอ
 backlight=$(ls /sys/class/backlight 2>/dev/null | head -1)
