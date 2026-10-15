@@ -5,7 +5,7 @@
 
 ---
 
-## ทัชแพต/คีย์บอร์ด folio หลุดเป็นพักๆ — บันไดความเสถียร 4 ขั้น
+## ทัชแพต/คีย์บอร์ด folio หลุดเป็นพักๆ — บันไดความเสถียร 5 ขั้น
 
 **อาการ:** ใช้ได้ปกติ แล้วทัชแพตเงียบไปเฉยๆ (บางรายต้องรีบูตถึงกลับมา)
 เจ้าของ Duet 5i รายอื่น[รายงานอาการเดียวกัน](https://discussion.fedoraproject.org/t/bluetooth-keyboard-with-touchpad-connected-but-not-working-lenovo-ideapad-duet-5i/78551)
@@ -34,12 +34,24 @@ sudo bash scripts/post-install.sh --stable-input
 ```bash
 sudo bash scripts/touchpad-recover.sh            # auto: จับคู่ unbind/bind อุปกรณ์ HID ภายใน
 sudo bash scripts/touchpad-recover.sh 1234:5678  # หรือระบุ VID:PID ตรงๆ
+sudo bash scripts/touchpad-recover.sh --hard     # รุนแรงสุด: รีเซ็ตคอนโทรลเลอร์ xHCI
 ```
-สคริปต์ทำ unbind → bind (เท่าถอด-ประกบ folio ใหม่แบบซอฟต์แวร์) และมี
-วิธีสำรองที่แรงกว่า (re-enumerate ผ่าน authorized) อัตโนมัติ — **ผูกกับปุ่มลัดไว้ได้**
+สคริปต์ทำ unbind → bind (เท่าถอด-ประกบ folio ใหม่แบบซอฟต์แวร์) มีวิธีสำรอง
+ที่แรงกว่า (re-enumerate ผ่าน authorized) และระดับสุดท้าย `--hard` คือรีเซ็ต
+คอนโทรลเลอร์ xHCI สำหรับกรณีอุปกรณ์หายจากบัสไปเลย — **ผูกกับปุ่มลัดไว้ได้**
 เช่น Super+T (ดูคำแนะนำ sudo NOPASSWD ในหัวสคริปต์)
 
-**ถ้าทั้ง 4 ขั้นแล้วยังหลุด:** บันทึก log ระหว่างอาการเกิด:
+**ขั้น 5 — ให้มันหายเองโดยไม่ต้องทำอะไร (watchdog อัตโนมัติ):**
+```bash
+sudo bash scripts/post-install.sh --watchdog
+```
+ติดตั้ง+เปิด service `duet5i-folio-watchdog` ที่เฝ้า folio ทุก 5 วินาที:
+ถ้าอุปกรณ์หายจากบัส มันจะเรียกขั้น 4 (ถึงระดับ `--hard`) ให้เองทันที
+ผลคือแม้อาการจะเกิด มันก็หายเองในไม่กี่วินาทีโดยไม่ต้องรีบูตหรือกดอะไร
+ปรับตั้งค่าได้ด้วย `systemctl edit duet5i-folio-watchdog`
+(เช่น กรอก `DUET5I_FOLIO_ID=17ef:60ef` เมื่อรู้ VID:PID จริง)
+
+**ถ้าทั้ง 5 ขั้นแล้วยังหลุด:** บันทึก log ระหว่างอาการเกิด:
 `sudo dmesg -wH` ทิ้งไว้ แล้วส่งบรรทัดที่โผล่ตอนทัชแพตดับให้ชุมชนดู —
 ถ้า dmesg แสดง error ของ USB controller ซ้ำๆ (เช่น `xhci ... reset`) แปลว่าเป็น
 ที่ระดับคอนโทรลเลอร์ ค่อยพิจารณา quirk เฉพาะรุ่นต่อไป

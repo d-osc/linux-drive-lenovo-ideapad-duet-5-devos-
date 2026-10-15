@@ -14,7 +14,7 @@
 | จอ 2.5K + ความสว่าง | ✅ ทำงานทันที | ไม่ต้องทำอะไร (ไดรเวอร์ `i915`) |
 | จอสัมผัส | ✅ ทำงานทันที (โดยทั่วไป) | `hid-multitouch` มีในเคอร์เนลอยู่แล้ว — ยืนยันด้วย probe |
 | คีย์บอร์ด folio (ผ่านขั้ว pogo) | ✅ ทำงานทันที | ปรากฏเป็น USB HID — ใช้งานได้เลย |
-| ทัชแพตบน folio | ⚠️ ใช้ได้ แต่หลุดเป็นพักๆ | แก้ 3 ชั้น: udev rule (ติดตั้งอัตโนมัติ) + `--stable-input` + `scripts/touchpad-recover.sh` กู้คืนด่วนโดยไม่ต้องรีบูต |
+| ทัชแพตบน folio | ⚠️ ใช้ได้ แต่หลุดเป็นพักๆ | บันได 5 ขั้น: udev 3 ชั้น + `--stable-input` + กู้คืนด่วน + **watchdog กู้คืนอัตโนมัติ** (`--watchdog`) หายเองในไม่กี่วินาที ไม่ต้องรีบูต |
 | Wi-Fi / Bluetooth (Intel AX201/AX211) | ✅ ทำงานทันที | เฟิร์มแวร์อยู่ในแพ็กเกจ `linux-firmware` |
 | เสียง (SOF Alder Lake) | ⚠️ ต้องมีเฟิร์มแวร์ SOF | มีใน Fedora โดยดีฟอลต์ / Ubuntu ต้องลง `sof-firmware` |
 | ลำโพงทุกตัว | ❓ ต้องยืนยัน | ถ้าเสียงออกไม่ครบทุกลำโพง อาจต้องแก้ UCM — ดู docs/03 |
@@ -51,8 +51,13 @@
 │   └── 03-troubleshooting.md  ← อาการที่พบบ่อย + วิธีแก้ทีละอาการ
 ├── scripts/
 │   ├── probe-hardware.sh      ← เก็บข้อมูลฮาร์ดแวร์ทั้งเครื่องเป็น tarball
-│   ├── post-install.sh        ← ลงแพ็กเกจ + เปิดบริการ + ใส่ udev rule หลังติดตั้ง (--stable-input เพิ่มความเสถียรอินพุตสูงสุด)
-│   └── touchpad-recover.sh    ← กู้คืนทัชแพต/คีย์บอร์ด folio ที่หลุด โดยไม่ต้องรีบูต
+│   ├── post-install.sh        ← ลงแพ็กเกจ + เปิดบริการ + ใส่ udev rule (--stable-input / --watchdog)
+│   ├── touchpad-recover.sh    ← กู้คืนทัชแพต/คีย์บอร์ด folio ที่หลุด โดยไม่ต้องรีบูต (มี --hard รีเซ็ต xHCI)
+│   └── folio-watchdog.sh      ← เฝ้า folio ตลอดเวลา หายจากบัสก็กู้คืนให้เองอัตโนมัติ
+├── systemd/
+│   └── duet5i-folio-watchdog.service ← service unit ของ watchdog (ติดตั้งผ่าน --watchdog)
+├── tests/
+│   └── test-recover.sh        ← ทดสอบ logic กู้คืน/watchdog ด้วยอุปกรณ์ USB จำลอง
 ├── udev/
 │   └── 99-duet5i-folio.rules  ← แก้ทัชแพต folio หลุดเป็นพักๆ (ปิด autosuspend)
 ├── driver-template/           ← แม่แบบโมดูลเคอร์เนล (DKMS) สำหรับกรณีมีอุปกรณ์ที่ยังไม่รองรับ

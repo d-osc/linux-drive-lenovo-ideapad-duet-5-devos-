@@ -11,9 +11,12 @@
 #   --stable-input   เพิ่มชั้นความเสถียรสูงสุดของอินพุต: ปิด USB autosuspend ทั้งระบบ
 #                    ผ่าน kernel parameter (usbcore.autosuspend=-1) + สร้าง grub config ใหม่
 #                    ใช้เมื่อ udev rule อย่างเดียวยังไม่พอ — ต้องรีบูตหนึ่งครั้งหลังใช้
+#   --watchdog       ติดตั้ง+เปิด duet5i-folio-watchdog: service เฝ้า folio ตลอดเวลา
+#                    ถ้าอุปกรณ์หายจากบัส กู้คืนให้เองอัตโนมัติ (unbind/bind ถึงระดับ xHCI)
+#                    ทำให้อาการ "ทัชแพตหลุด" หายเองในไม่กี่วินาทีโดยไม่ต้องรีบูต
 #
 # รองรับ: Fedora (dnf) / Ubuntu-Debian (apt) — รันได้ซ้ำ (idempotent)
-#   sudo bash post-install.sh [--stable-input]
+#   sudo bash post-install.sh [--stable-input] [--watchdog]
 
 set -u
 
@@ -57,6 +60,22 @@ apply_stable_input() {
     echo "เสร็จ — รีบูตหนึ่งครั้งเพื่อให้พารามิเตอร์มีผล"
 }
 
+# ---------- ตัวเลือก: watchdog กู้คืนอุปกรณ์อินพุตอัตโนมัติ (--watchdog) ----------
+install_watchdog() {
+    echo "== ติดตั้ง folio watchdog (กู้คืนทัชแพต/คีย์บอร์ดอัตโนมัติ) =="
+    if ! command -v systemctl >/dev/null 2>&1; then
+        echo "!! ไม่พบ systemctl — watchdog รองรับเฉพาะระบบที่ใช้ systemd" >&2
+        return 1
+    fi
+    install -m 0755 "$SCRIPT_DIR/touchpad-recover.sh" /usr/local/sbin/duet5i-touchpad-recover.sh
+    install -m 0755 "$SCRIPT_DIR/folio-watchdog.sh" /usr/local/sbin/duet5i-folio-watchdog.sh
+    install -m 0644 "$SCRIPT_DIR/../systemd/duet5i-folio-watchdog.service" /etc/systemd/system/duet5i-folio-watchdog.service
+    systemctl daemon-reload
+    systemctl enable --now duet5i-folio-watchdog 2>/dev/null \
+        && echo "เปิด duet5i-folio-watchdog แล้ว (ตรวจทุก 5 วินาที — แก้ค่าได้ด้วย systemctl edit)" \
+        || echo "!! เปิด service ไม่สำเร็จ (ลอง: systemctl status duet5i-folio-watchdog)"
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UDEV_SRC="${SCRIPT_DIR}/../udev/99-duet5i-folio.rules"
 UDEV_DST="/etc/udev/rules.d/99-duet5i-folio.rules"
@@ -73,9 +92,13 @@ else
 fi
 echo "== ตรวจพบ distro แบบ: ${PKG} =="
 
-if [ "${1:-}" = "--stable-input" ]; then
-    apply_stable_input
-fi
+for argument in "$@"; do
+    case "$argument" in
+        --stable-input) apply_stable_input ;;
+        --watchdog) install_watchdog ;;
+        *) echo "!! ไม่รู้จักตัวเลือก: $argument (ที่รองรับ: --stable-input, --watchdog)" >&2 ;;
+    esac
+done
 
 # ---------- 1. ติดตั้งแพ็กเกจ ----------
 # หมายเหตุ: บางแพ็กเกจอาจชื่อต่างกันตาม distro — ตัวไหนลงไม่ได้จะข้ามและเตือน

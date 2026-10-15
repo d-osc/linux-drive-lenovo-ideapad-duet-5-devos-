@@ -1,0 +1,17 @@
+[Unit]
+Description=Duet 5i folio input watchdog (เฝ้าคีย์บอร์ด/ทัชแพต folio และกู้คืนให้เอง)
+# หลังบูตเสร็จค่อยเริ่มเฝ้า และถ้า service ตายให้เริ่มใหม่เสมอ
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/duet5i-folio-watchdog.sh
+Restart=always
+RestartSec=3
+# ค่าตั้งเริ่มต้น — แก้ได้ด้วย `systemctl edit duet5i-folio-watchdog`
+# (เช่น กรอก DUET5I_FOLIO_ID=17ef:60ef เมื่อรู้ VID:PID จริงของ folio)
+Environment=DUET5I_FOLIO_ID=auto
+Environment=DUET5I_WATCHDOG_INTERVAL=5
+
+[Install]
+WantedBy=multi-user.target

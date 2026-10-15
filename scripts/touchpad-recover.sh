@@ -1,28 +1,32 @@
 #!/usr/bin/env bash
 # touchpad-recover.sh — กู้คืนทัชแพต/คีย์บอร์ด folio ที่ "หลุด" โดยไม่ต้องรีบูต
 #
-# วิธีทำงาน: จับคู่ (unbind → bind) อุปกรณ์ USB ของ folio หรือสั่ง re-enumerate
-# ผ่านไฟล์ authorized — เทียบเท่าการถอด-ประกบ folio ใหม่ แต่ทำด้วยซอฟต์แวร์
-# ใช้ได้ทั้งแบบกำหนด VID:PID เอง และแบบ auto (อุปกรณ์ HID บน USB ภายในของเครื่อง)
+# วิธีทำงาน (เรียงตามความแรง):
+#   1. unbind → bind อุปกรณ์ USB ของ folio (เท่าถอด-ประกบใหม่แบบซอฟต์แวร์)
+#   2. re-enumerate ผ่านไฟล์ authorized (แรงกว่า)
+#   3. (--hard) รีเซ็ตคอนโทรลเลอร์ xHCI ทั้งหมด — ใช้เมื่ออุปกรณ์หายจากบัสไปเลย
 #
 # วิธีใช้:
-#   sudo bash touchpad-recover.sh --list            ดูอุปกรณ์ที่จะจับคู่ได้ (พร้อม VID:PID)
+#   sudo bash touchpad-recover.sh --list            ดูอุปกรณ์ (พร้อม VID:PID)
 #   sudo bash touchpad-recover.sh                   กู้คืนแบบ auto
 #   sudo bash touchpad-recover.sh 1234:5678         กู้คืนเฉพาะอุปกรณ์ที่ระบุ VID:PID
+#   sudo bash touchpad-recover.sh --hard            กู้คืน + รีเซ็ตคอนโทรลเลอร์ USB
+#   bash  touchpad-recover.sh --present [id]        แค่ตรวจว่า folio ยังอยู่ (ใช้โดย watchdog)
 #
-# เคล็ดลับ: ผูกเป็นปุ่มลัดได้ เช่น ใน labwc/GNOME ให้คำสั่งนี้ทำงานเมื่อกด Super+T
-# (เรียกผ่าน terminal แบบ pkexec หรือตั้ง sudo rule เฉพาะคำสั่งนี้แบบ NOPASSWD)
+# เคล็ดลับ: ผูกเป็นปุ่มลัดได้ เช่น Super+T (ตั้ง sudo NOPASSWD เฉพาะคำสั่งนี้)
 
 set -u
 
 # ตำแหน่ง sysfs ของอุปกรณ์ USB (override ได้เพื่อการทดสอบ: DUET5I_USB_SYSFS=...)
 USB_DEVICES="${DUET5I_USB_SYSFS:-/sys/bus/usb/devices}"
+XHCI_DRIVER=/sys/bus/pci/drivers/xhci_hcd
 
 say() { printf '%s\n' "$*"; }
 
 read_attr() { cat "$1" 2>/dev/null; }
 
 # รวมข้อมูลอุปกรณ์ USB แต่ละตัว (เฉพาะที่มี idVendor = เป็นอุปกรณ์จริง ไม่ใช่ hub root)
+# ผลลัพธ์ 5 ฟิลด์คั่นด้วย tab: ที่อยู่  vid:pid  ชื่อ  removable  hid(0/1)
 list_devices() {
     for dev in "$USB_DEVICES"/*/; do
         dev="${dev%/}"
@@ -53,6 +57,27 @@ pick_targets() {
     done
 }
 
+# รีเซ็ตคอนโทรลเลอร์ xHCI ทุกตัว: อุปกรณ์ USB ทั้งหมดจะถูกตรวจพบใหม่
+# (สำหรับกรณี folio หายจากบัสไปเลย จนไม่มีตัวให้ unbind/bind)
+reset_xhci() {
+    found=0
+    for ctrl in "$XHCI_DRIVER"/*/; do
+        [ -d "$ctrl" ] || continue
+        found=1
+        addr="${ctrl%/}"; addr="${addr##*/}"
+        say "== รีเซ็ตคอนโทรลเลอร์ USB: $addr =="
+        printf '%s' "$addr" > "$XHCI_DRIVER/unbind" 2>/dev/null || true
+        sleep 1
+        if printf '%s' "$addr" > "$XHCI_DRIVER/bind" 2>/dev/null; then
+            say "   รีเซ็ตสำเร็จ — อุปกรณ์ USB จะกลับมาใน 1-2 วินาที"
+        else
+            say "   bind ไม่สำเร็จ" >&2
+            status=1
+        fi
+    done
+    [ "$found" = "0" ] && say "   (ไม่พบคอนโทรลเลอร์ xHCI ในระบบนี้)"
+}
+
 case "${1:-auto}" in
     -l|--list)
         say "อุปกรณ์ USB ทั้งหมด (รูปแบบ: ที่อยู่  VID:PID  ชื่อ  removable  hid):"
@@ -63,8 +88,12 @@ case "${1:-auto}" in
         exit 0
         ;;
     -h|--help)
-        sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
         exit 0
+        ;;
+    --present)
+        # โหมดตรวจสถานะ (ไม่ต้องเป็น root) — ใช้โดย folio-watchdog
+        pick_targets "${2:-auto}" | grep -q . && exit 0 || exit 1
         ;;
 esac
 
@@ -78,35 +107,49 @@ if ! [ -d "$USB_DEVICES" ]; then
     exit 1
 fi
 
+HARD=0
 selector="${1:-auto}"
-targets=$(pick_targets "$selector")
-if [ -z "$targets" ]; then
-    say "!! ไม่พบอุปกรณ์ที่ตรงเงื่อนไข ($selector)" >&2
-    say "   ลอง: sudo bash $0 --list เพื่อดูอุปกรณ์ทั้งหมด แล้วระบุ VID:PID ตรงๆ" >&2
-    exit 1
+if [ "$selector" = "--hard" ]; then
+    HARD=1
+    selector="${2:-auto}"
 fi
 
 status=0
-for addr in $targets; do
-    say "== กู้คืน $addr =="
-    # วิธีที่ 1: unbind → bind ผ่านไดรเวอร์ usb (พอ 90% ของกรณี)
-    if [ -w /sys/bus/usb/drivers/usb/unbind ]; then
-        if printf '%s' "$addr" > /sys/bus/usb/drivers/usb/unbind 2>/dev/null; then
-            sleep 0.3
-            printf '%s' "$addr" > /sys/bus/usb/drivers/usb/bind 2>/dev/null \
-                && say "   unbind/bind สำเร็จ" || { say "   bind ไม่สำเร็จ ลองวิธีถัดไป"; status=1; }
-        fi
+targets=$(pick_targets "$selector")
+if [ -z "$targets" ]; then
+    say "!! ไม่พบอุปกรณ์ที่ตรงเงื่อนไข ($selector)"
+    if [ "$HARD" = "1" ]; then
+        say "   อุปกรณ์หายจากบัส — รีเซ็ตคอนโทรลเลอร์เพื่อให้ตรวจพบใหม่"
+        reset_xhci
+    else
+        say "   ถ้า folio หายไปเลย ให้ลอง: sudo bash $0 --hard" >&2
+        say "   หรือดูอุปกรณ์ทั้งหมด: sudo bash $0 --list แล้วระบุ VID:PID" >&2
+        status=1
     fi
-    # วิธีที่ 2 (แรงกว่า): ตัด-ต่อ authorized = re-enumerate เหมือนถอด-ประกบใหม่
-    if [ "$status" -ne 0 ] || [ ! -e /sys/bus/usb/drivers/usb ]; then
-        if [ -w "/sys/bus/usb/devices/$addr/authorized" ]; then
-            printf '0' > "/sys/bus/usb/devices/$addr/authorized" 2>/dev/null
+else
+    for addr in $targets; do
+        say "== กู้คืน $addr =="
+        # วิธีที่ 1: unbind → bind ผ่านไดรเวอร์ usb (พอ 90% ของกรณี)
+        if [ -w /sys/bus/usb/drivers/usb/unbind ]; then
+            if printf '%s' "$addr" > /sys/bus/usb/drivers/usb/unbind 2>/dev/null; then
+                sleep 0.3
+                printf '%s' "$addr" > /sys/bus/usb/drivers/usb/bind 2>/dev/null \
+                    && say "   unbind/bind สำเร็จ" || { say "   bind ไม่สำเร็จ ลองวิธีถัดไป"; status=1; }
+            fi
+        fi
+        # วิธีที่ 2 (แรงกว่า): ตัด-ต่อ authorized = re-enumerate เหมือนถอด-ประกบใหม่
+        if [ "$status" -ne 0 ] && [ -w "$USB_DEVICES/$addr/authorized" ]; then
+            printf '0' > "$USB_DEVICES/$addr/authorized" 2>/dev/null
             sleep 0.5
-            printf '1' > "/sys/bus/usb/devices/$addr/authorized" 2>/dev/null \
+            printf '1' > "$USB_DEVICES/$addr/authorized" 2>/dev/null \
                 && say "   re-enumerate ผ่าน authorized สำเร็จ" || status=1
         fi
+    done
+    # วิธีที่ 3 (--hard): ยังไม่สำเร็จหรือขอแบบชัวร์ → รีเซ็ตคอนโทรลเลอร์
+    if [ "$HARD" = "1" ]; then
+        reset_xhci
     fi
-done
+fi
 
 if [ "$status" -eq 0 ]; then
     say "เสร็จ — ทัชแพต/คีย์บอร์ดควรกลับมาทำงานทันที"
