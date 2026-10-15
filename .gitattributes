@@ -1,0 +1,8 @@
+# บังคับ line ending แบบ LF สำหรับไฟล์ที่จะรันบน Linux
+* text=auto
+*.sh text eol=lf
+*.rules text eol=lf
+Makefile text eol=lf
+*.c text eol=lf
+*.conf text eol=lf
+*.md text

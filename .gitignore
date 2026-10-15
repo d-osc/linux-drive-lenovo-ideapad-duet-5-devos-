@@ -1,0 +1,5 @@
+# ไม่รวม clone ของ DevOs กับของที่ build แล้วเข้า repo นี้ (เป็นโปรเจกต์ driver)
+DevOs/
+duet5i-probe-*/
+duet5i-probe-*.tar.gz
+*.log
